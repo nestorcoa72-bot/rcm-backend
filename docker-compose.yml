@@ -1,0 +1,34 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rcm_user
+      POSTGRES_PASSWORD: rcm_pass
+      POSTGRES_DB: rcm_motores
+    ports:
+      - "5432:5432"
+    volumes:
+      - rcm_pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rcm_user -d rcm_motores"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://rcm_user:rcm_pass@db:5432/rcm_motores
+
+volumes:
+  rcm_pgdata:
