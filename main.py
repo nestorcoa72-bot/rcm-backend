@@ -19,7 +19,10 @@ from services import reliability_service as rel
 from services import rcm_service as rcm
 from services import cox_service as cox
 
- import os DATABASE_URL = os.environ.get( "DATABASE_URL", "postgresql://rcm_user:rcm_pass@localhost:5432/rcm_motores" ) engine = create_engine(DATABASE_URL)
+import os
+
+DATABASE_URL = os.environ.get( "DATABASE_URL", "postgresql://rcm_user:rcm_pass@localhost:5432/rcm_motores" )
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 
 app = FastAPI(
