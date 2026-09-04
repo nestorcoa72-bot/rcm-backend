@@ -80,7 +80,7 @@ def reliability_f(t: np.ndarray, beta: float, eta: float) -> np.ndarray:
 
 def b10_life(beta: float, eta: float) -> float:
     """Tiempo al que el 10% de la población ha fallado."""
-    return eta * (-np.log(0.90)) ** (1 / beta)
+    float(return eta * (-np.log(0.90)) ** (1 / beta))
 
 
 def run_monte_carlo(
