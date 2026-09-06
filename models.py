@@ -1,52 +1,16 @@
 """
-SQLAlchemy ORM models — reflejan schema.sql
+SQLAlchemy ORM models — reflejan schema_v2.sql (ficha técnica completa)
 """
 import uuid
 from datetime import datetime
 from sqlalchemy import (
     Column, String, Float, Integer, Boolean, DateTime, Date, ForeignKey,
-    CheckConstraint, SmallInteger, Numeric, Text, ARRAY
+    CheckConstraint, SmallInteger, Numeric, Text
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
-
-
-class Variador(Base):
-    __tablename__ = "variadores_vfd"
-    id_variador = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    marca_modelo = Column(String(120), nullable=False)
-    frecuencia_portadora_khz = Column(Float)
-    filtro_dv_dt = Column(Boolean, default=False)
-    filtro_modo_comun = Column(Boolean, default=False)
-    creado_en = Column(DateTime, default=datetime.utcnow)
-
-    motores = relationship("Motor", back_populates="variador")
-
-
-class Motor(Base):
-    __tablename__ = "motores"
-    id_motor = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tag_equipo = Column(String(50), unique=True, nullable=False)
-    potencia_kw = Column(Float, nullable=False)
-    voltaje_v = Column(Integer, nullable=False)
-    corriente_nominal_a = Column(Float)
-    rpm_nominal = Column(Integer, nullable=False)
-    tipo_rodamiento_de = Column(String(60))
-    tipo_rodamiento_nde = Column(String(60))
-    clase_aislamiento = Column(String(5))
-    id_variador = Column(UUID(as_uuid=True), ForeignKey("variadores_vfd.id_variador", ondelete="SET NULL"))
-    criticidad = Column(String(1), nullable=False)
-    fecha_instalacion = Column(Date, nullable=False)
-    activo = Column(Boolean, default=True)
-    creado_en = Column(DateTime, default=datetime.utcnow)
-
-    __table_args__ = (CheckConstraint("criticidad IN ('A','B','C')"),)
-
-    variador = relationship("Variador", back_populates="motores")
-    fallas = relationship("HistorialFalla", back_populates="motor")
-    costos = relationship("Costo", back_populates="motor", uselist=False)
 
 
 class CatalogoModoFalla(Base):
@@ -57,6 +21,61 @@ class CatalogoModoFalla(Base):
     severidad_default = Column(SmallInteger, nullable=False)
     deteccion_default = Column(SmallInteger, nullable=False)
     tecnica_deteccion = Column(String(200))
+    iso_modo = Column(String(10))
+    iso_mecanismo = Column(String(150))
+
+
+class Motor(Base):
+    __tablename__ = "motores"
+    id_motor = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tag = Column(String(50))
+    fabricante = Column(String(100))
+    modelo = Column(String(100))
+    serial = Column(String(100), unique=True, nullable=False)
+    anio = Column(Integer)
+    equipo_accionado = Column(String(150))
+    macolla = Column(String(50))
+    pozo = Column(String(50))
+    unidad = Column(String(50))
+    division = Column(String(50))
+    potencia_hp = Column(Float)
+    tension = Column(Float)
+    corriente = Column(Float)
+    frecuencia = Column(Float)
+    fases = Column(String(5))
+    fp = Column(Float)
+    eficiencia = Column(Float)
+    conexion = Column(String(30))
+    sf = Column(Float)
+    rpm = Column(Float)
+    polos = Column(Integer)
+    montaje = Column(String(30))
+    frame = Column(String(30))
+    rodamiento_de = Column(String(60))
+    rodamiento_nde = Column(String(60))
+    eje = Column(String(60))
+    peso = Column(Float)
+    aislamiento = Column(String(5))
+    ip = Column(String(10))
+    regimen = Column(String(5))
+    temp_ambiente = Column(Float)
+    altitud = Column(Float)
+    clase_nema = Column(String(30))
+    corriente_arranque = Column(String(30))
+    fecha_ultima_prueba = Column(Date)
+    resistencia_aislamiento = Column(Float)
+    indice_polarizacion = Column(Float)
+    vibracion_ref = Column(Float)
+    temp_rodamientos_ref = Column(Float)
+    cabezal = Column(String(20))
+    criticidad = Column(String(1), nullable=False)
+    activo = Column(Boolean, default=True)
+    creado_en = Column(DateTime, default=datetime.utcnow)
+    actualizado_en = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (CheckConstraint("criticidad IN ('A','B','C')"),)
+
+    fallas = relationship("HistorialFalla", back_populates="motor")
 
 
 class HistorialFalla(Base):
@@ -64,20 +83,36 @@ class HistorialFalla(Base):
     id_falla = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     id_motor = Column(UUID(as_uuid=True), ForeignKey("motores.id_motor", ondelete="CASCADE"), nullable=False)
     id_modo = Column(Integer, ForeignKey("catalogo_modos_falla.id_modo"), nullable=False)
-    fecha_falla = Column(DateTime, nullable=True)
-    horas_operacion_al_evento = Column(Float, nullable=False)
-    fecha_fin_reparacion = Column(DateTime, nullable=True)
+    fecha = Column(Date)
+    componente_especifico = Column(String(150))
+    orden_trabajo = Column(String(50))
+    reportado_por = Column(String(100))
     causa_raiz = Column(Text)
+    categoria_causa = Column(String(30))
+    metodo_analisis = Column(String(30))
+    accion_correctiva = Column(Text)
+    accion_preventiva = Column(Text)
+    recurrente = Column(String(5))
+    horas_operacion_al_evento = Column(Float, nullable=False)
+    carga_pct = Column(Float)
+    temperatura_registrada = Column(Float)
+    vibracion_registrada = Column(Float)
+    corriente_registrada = Column(Float)
+    mttr = Column(Float)
+    horas_parada_produccion = Column(Float)
+    costo_reparacion = Column(Numeric(12, 2))
+    produccion_perdida_bbl = Column(Float)
+    repuesto_utilizado = Column(String(150))
     censurado = Column(Boolean, nullable=False, default=False)
     creado_en = Column(DateTime, default=datetime.utcnow)
+    actualizado_en = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     motor = relationship("Motor", back_populates="fallas")
-    modo = relationship("CatalogoModoFalla")
+    modo_ref = relationship("CatalogoModoFalla")
 
 
 class AmefOverride(Base):
     __tablename__ = "amef_overrides"
-    id_motor = Column(UUID(as_uuid=True), ForeignKey("motores.id_motor", ondelete="CASCADE"), primary_key=True)
     id_modo = Column(Integer, ForeignKey("catalogo_modos_falla.id_modo"), primary_key=True)
     severidad = Column(SmallInteger)
     ocurrencia_manual = Column(SmallInteger)
@@ -85,16 +120,16 @@ class AmefOverride(Base):
     actualizado_en = Column(DateTime, default=datetime.utcnow)
 
 
-class Costo(Base):
-    __tablename__ = "costos"
-    id_motor = Column(UUID(as_uuid=True), ForeignKey("motores.id_motor", ondelete="CASCADE"), primary_key=True)
-    costo_hora_preventivo = Column(Numeric(12, 2), nullable=False)
-    costo_hora_correctivo = Column(Numeric(12, 2), nullable=False)
-    costo_hora_parada_produccion = Column(Numeric(12, 2), nullable=False)
-    costo_mano_obra_hora = Column(Numeric(12, 2))
-    actualizado_en = Column(DateTime, default=datetime.utcnow)
-
-    motor = relationship("Motor", back_populates="costos")
+class InventarioRepuesto(Base):
+    __tablename__ = "inventario_repuestos"
+    id_repuesto = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    nombre = Column(String(150), nullable=False)
+    id_modo = Column(Integer, ForeignKey("catalogo_modos_falla.id_modo"))
+    stock = Column(Integer, default=0)
+    punto_reorden = Column(Integer, default=0)
+    lead_time_dias = Column(Integer, default=0)
+    costo_unitario = Column(Numeric(12, 2))
+    creado_en = Column(DateTime, default=datetime.utcnow)
 
 
 class SimulacionWeibull(Base):
@@ -119,33 +154,12 @@ class PlanRCM(Base):
     __tablename__ = "planes_rcm"
     id_plan = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     id_simulacion = Column(UUID(as_uuid=True), ForeignKey("simulaciones_weibull.id_simulacion"), nullable=False)
-    id_motor = Column(UUID(as_uuid=True), ForeignKey("motores.id_motor", ondelete="CASCADE"), nullable=False)
+    id_motor = Column(UUID(as_uuid=True), ForeignKey("motores.id_motor", ondelete="CASCADE"))
     id_modo = Column(Integer, ForeignKey("catalogo_modos_falla.id_modo"), nullable=False)
     npr_calculado = Column(Integer, nullable=False)
     intervalo_optimo_horas = Column(Float, nullable=False)
     costo_total_esperado = Column(Numeric(14, 2), nullable=False)
     estrategia = Column(String(60), nullable=False)
-    vigente = Column(Boolean, default=True)
+    estado = Column(String(20), nullable=False, default="Borrador")
+    historial = Column(JSONB, nullable=False, default=list)
     generado_en = Column(DateTime, default=datetime.utcnow)
-
-
-class CovariableEvento(Base):
-    __tablename__ = "covariables_evento"
-    id_falla = Column(UUID(as_uuid=True), ForeignKey("historial_fallas.id_falla", ondelete="CASCADE"), primary_key=True)
-    frecuencia_khz = Column(Float)
-    thd_pct = Column(Float)
-    temperatura_promedio_c = Column(Float)
-    carga_relativa_pct = Column(Float)
-
-
-class ModeloCox(Base):
-    __tablename__ = "modelos_cox"
-    id_modelo = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    id_modo = Column(Integer, ForeignKey("catalogo_modos_falla.id_modo"), nullable=False)
-    covariables_usadas = Column(ARRAY(String), nullable=False)
-    hazard_ratios = Column(JSONB, nullable=False)
-    p_values = Column(JSONB, nullable=False)
-    concordance_index = Column(Float, nullable=False)
-    n_observaciones = Column(Integer, nullable=False)
-    n_eventos = Column(Integer, nullable=False)
-    ejecutado_en = Column(DateTime, default=datetime.utcnow)
