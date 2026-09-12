@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RCM MOTORES — Reliability Command Center</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --void:#070a0a;
+    --panel:#0e1513;
+    --panel-2:#121b18;
+    --line:#1f2e29;
+    --line-bright:#2c4038;
+    --ink:#dfe9e5;
+    --muted:#7d938c;
+    --amber:#ffb020;
+    --amber-dim:#8a5f14;
+    --cyan:#28e6c4;
+    --cyan-dim:#155249;
+    --red:#ff5252;
+    --red-dim:#7a2424;
+    --mono:'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    --sans:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--void);color:var(--ink);font-family:var(--sans);}
+  ::selection{background:var(--amber);color:#000;}
+
+  .grid-overlay{
+    position:fixed;inset:0;pointer-events:none;z-index:1;
+    background-image:
+      linear-gradient(rgba(40,230,196,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(40,230,196,0.035) 1px, transparent 1px);
+    background-size:34px 34px;
+    mask-image:radial-gradient(ellipse at 50% 0%, black 0%, transparent 75%);
+  }
+
+  /* ===== HERO ===== */
+  .hero{position:relative;height:460px;overflow:hidden;border-bottom:1px solid var(--line-bright);}
+  .hero-imgs{position:absolute;inset:0;}
+  .hero-img{position:absolute;object-fit:cover;filter:grayscale(55%) contrast(1.15) brightness(0.55) sepia(15%) hue-rotate(120deg);}
+  .hero-img.motor{top:0;left:0;width:62%;height:100%;object-position:center 30%;}
+  .hero-img.circuit{top:0;right:0;width:42%;height:100%;object-position:center;opacity:0.55;mix-blend-mode:screen;}
+  .hero-scrim{position:absolute;inset:0;background:
+      linear-gradient(180deg, rgba(7,10,10,0.35) 0%, rgba(7,10,10,0.55) 55%, var(--void) 100%),
+      linear-gradient(90deg, rgba(7,10,10,0.9) 0%, rgba(7,10,10,0.25) 40%, rgba(7,10,10,0.75) 100%);
+  }
+  .hero-content{position:relative;z-index:2;max-width:1200px;margin:0 auto;padding:34px 34px 0;}
+  .hero-eyebrow{font-family:var(--mono);font-size:11px;color:var(--cyan);letter-spacing:3px;text-transform:uppercase;display:flex;align-items:center;gap:8px;}
+  .hero-eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan);animation:pulse 1.6s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+  .hero-title{font-size:40px;font-weight:800;letter-spacing:-1px;margin:10px 0 6px;line-height:1.02;}
+  .hero-title span{color:var(--amber);}
+  .hero-sub{color:var(--muted);font-size:14px;max-width:520px;line-height:1.6;margin:0 0 18px;}
+
+  .hero-hud{display:flex;gap:0;margin-top:14px;border-top:1px solid var(--line-bright);max-width:820px;}
+  .hud-cell{flex:1;padding:12px 18px;border-right:1px solid var(--line-bright);}
+  .hud-cell:last-child{border-right:none;}
+  .hud-lbl{font-family:var(--mono);font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+  .hud-val{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--cyan);margin-top:3px;}
+  .hud-val.warn{color:var(--amber);}
+  .hud-val.crit{color:var(--red);}
+  .hud-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px;}
+  .hud-dot.on{background:var(--cyan);box-shadow:0 0 6px var(--cyan);}
+  .hud-dot.off{background:var(--red);box-shadow:0 0 6px var(--red);}
+
+  .scope-dock{position:absolute;z-index:2;right:34px;bottom:0;width:340px;background:rgba(7,15,13,0.82);border:1px solid var(--line-bright);border-bottom:none;border-radius:8px 8px 0 0;padding:10px 12px 0;backdrop-filter:blur(2px);}
+  .scope-head{display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:4px;}
+  .scope-head .live{color:var(--red);}
+  canvas#scope{display:block;width:100%;height:110px;}
+  @media(max-width:900px){.scope-dock{display:none;}}
+
+  /* ===== CONFIG BAR (API base URL) ===== */
+  .config-bar{max-width:1200px;margin:0 auto;padding:12px 34px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--line-bright);background:var(--panel-2);position:relative;z-index:2;}
+  .config-bar label{font-family:var(--mono);font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap;}
+  .config-bar input{flex:1;min-width:220px;max-width:460px;padding:7px 10px;border:1px solid var(--line-bright);border-radius:4px;font-size:12.5px;font-family:var(--mono);background:#0a1210;color:var(--ink);}
+  .config-bar input:focus{outline:none;border-color:var(--cyan);}
+  .config-status{font-family:var(--mono);font-size:11px;color:var(--muted);}
+
+  /* ===== SHELL ===== */
+  .shell{display:flex;position:relative;z-index:2;}
+  .sidebar{width:210px;flex-shrink:0;padding:22px 0;border-right:1px solid var(--line);background:var(--panel);min-height:calc(100vh - 460px);}
+  .navitem{display:flex;align-items:center;gap:10px;padding:11px 22px;font-size:13px;cursor:pointer;color:var(--muted);border-left:2px solid transparent;font-family:var(--mono);}
+  .navitem:hover{color:var(--ink);background:rgba(40,230,196,0.04);}
+  .navitem.active{color:var(--amber);border-left-color:var(--amber);background:rgba(255,176,32,0.06);}
+  .navitem .n{color:#3d5750;width:17px;height:17px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;}
+  .navitem .n svg{width:17px;height:17px;stroke:currentColor;}
+  .navitem.active .n{color:var(--amber);}
+
+  .main{flex:1;padding:30px 36px;max-width:1150px;}
+  .view{display:none;}
+  .view.active{display:block;}
+  h1{font-size:19px;margin:0 0 4px;font-weight:700;}
+  .subtitle{color:var(--muted);font-size:12.5px;margin:0 0 20px;font-family:var(--mono);}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:20px 22px;margin-bottom:16px;position:relative;}
+  .panel::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:linear-gradient(180deg,var(--cyan),transparent);opacity:0.5;border-radius:6px 0 0 6px;}
+  .panel h2{font-size:13px;margin:0 0 4px;color:var(--ink);font-weight:700;letter-spacing:0.3px;}
+  .panel .desc{color:var(--muted);font-size:12px;margin:0 0 14px;}
+  .panel h3.sub{font-size:11px;color:var(--cyan);text-transform:uppercase;letter-spacing:0.6px;margin:18px 0 8px;font-family:var(--mono);}
+  .panel h3.sub:first-of-type{margin-top:0;}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+  .grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;}
+  @media(max-width:900px){.grid2,.grid3,.grid4{grid-template-columns:1fr;} .hero-img.circuit{display:none;} .hero-img.motor{width:100%;}}
+
+  label{display:block;font-size:10.5px;color:var(--muted);margin-bottom:4px;font-weight:600;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.5px;}
+  input, select, textarea{width:100%;padding:8px 10px;border:1px solid var(--line-bright);border-radius:4px;font-size:13px;font-family:var(--sans);background:#0a1210;color:var(--ink);}
+  textarea{resize:vertical;min-height:56px;}
+  input:focus, select:focus, textarea:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan);}
+  .field{margin-bottom:12px;}
+
+  button{font-family:var(--sans);cursor:pointer;}
+  .btn{background:var(--amber);color:#1a1200;border:none;padding:9px 16px;border-radius:4px;font-size:13px;font-weight:700;}
+  .btn:hover{background:#ffc355;}
+  .btn:disabled{opacity:0.5;cursor:not-allowed;}
+  .btn-ghost{background:none;border:1px solid var(--line-bright);color:var(--ink);padding:8px 14px;border-radius:4px;font-size:12.5px;}
+  .btn-ghost:hover{border-color:var(--cyan);color:var(--cyan);}
+  .btn-danger{background:none;border:1px solid var(--red-dim);color:var(--red);padding:5px 10px;border-radius:4px;font-size:11px;}
+  .btn-small{padding:5px 10px;font-size:11px;border-radius:4px;}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th{text-align:left;padding:8px 10px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--line-bright);font-size:10.5px;font-family:var(--mono);text-transform:uppercase;}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);font-family:var(--mono);vertical-align:top;}
+  td.txt{font-family:var(--sans);}
+  tr:last-child td{border-bottom:none;}
+  .table-wrap{overflow-x:auto;}
+
+  .badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:11px;font-family:var(--mono);font-weight:700;}
+  .badge.high{background:var(--red-dim);color:#ffb3b3;}
+  .badge.mid{background:var(--amber-dim);color:#ffd98a;}
+  .badge.low{background:var(--cyan-dim);color:#9ff5e5;}
+  .badge.estado-borrador{background:#2c4038;color:#a9c4bb;}
+  .badge.estado-pendiente{background:var(--amber-dim);color:#ffd98a;}
+  .badge.estado-aprobado{background:var(--cyan-dim);color:#9ff5e5;}
+  .badge.estado-rechazado{background:var(--red-dim);color:#ffb3b3;}
+
+  .stat-row{display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;}
+  .stat{flex:1;min-width:130px;background:#0a1210;border:1px solid var(--line-bright);border-radius:6px;padding:12px 14px;}
+  .stat .lbl{font-size:10px;color:var(--muted);font-family:var(--mono);text-transform:uppercase;}
+  .stat .val{font-family:var(--mono);font-size:20px;font-weight:700;margin-top:2px;color:var(--cyan);}
+
+  .chart-box{position:relative;height:220px;margin-top:14px;}
+  .empty{text-align:center;color:var(--muted);padding:26px 10px;font-size:13px;font-family:var(--mono);}
+  .row-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.5;font-family:var(--mono);}
+  .routine-step{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);}
+  .routine-step:last-child{border-bottom:none;}
+  .routine-step .pct{font-family:var(--mono);font-size:11px;color:var(--cyan);width:170px;flex-shrink:0;}
+  .routine-step .body p{margin:2px 0;font-size:12.5px;color:var(--ink);}
+  .routine-step .body p b{color:var(--muted);font-weight:600;}
+
+  .edit-banner{display:flex;justify-content:space-between;align-items:center;background:rgba(255,176,32,0.08);border:1px solid var(--amber-dim);border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:12px;color:var(--amber);font-family:var(--mono);}
+
+  /* ===== toast ===== */
+  #toastWrap{position:fixed;bottom:18px;right:18px;z-index:999;display:flex;flex-direction:column;gap:8px;}
+  .toast{background:var(--panel-2);border:1px solid var(--line-bright);border-left:3px solid var(--cyan);color:var(--ink);padding:10px 16px;border-radius:6px;font-size:12.5px;max-width:340px;opacity:0;transform:translateY(8px);transition:all 0.25s;box-shadow:0 6px 20px rgba(0,0,0,0.4);}
+  .toast.show{opacity:1;transform:translateY(0);}
+  .toast.toast-error{border-left-color:var(--red);}
+</style>
+</head>
+<body>
+<div class="grid-overlay"></div>
+<div id="toastWrap"></div>
+
+<div class="hero">
+  <div class="hero-imgs">
+    <svg class="hero-img motor" viewBox="0 0 800 620" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <rect width="800" height="620" fill="#0c1614"/>
+      <g stroke="#3a5a52" stroke-width="2" fill="none" opacity="0.9">
+        <line x1="0" y1="180" x2="800" y2="180"/>
+        <line x1="0" y1="460" x2="800" y2="460"/>
+      </g>
+      <g fill="#101c19" stroke="#4d7268" stroke-width="3">
+        <rect x="120" y="200" width="60" height="230" rx="6"/>
+        <rect x="180" y="185" width="330" height="260" rx="10"/>
+        <g stroke="#385c53" stroke-width="4">
+          <line x1="215" y1="185" x2="215" y2="445"/>
+          <line x1="250" y1="185" x2="250" y2="445"/>
+          <line x1="285" y1="185" x2="285" y2="445"/>
+          <line x1="320" y1="185" x2="320" y2="445"/>
+          <line x1="355" y1="185" x2="355" y2="445"/>
+          <line x1="390" y1="185" x2="390" y2="445"/>
+          <line x1="425" y1="185" x2="425" y2="445"/>
+          <line x1="460" y1="185" x2="460" y2="445"/>
+        </g>
+        <rect x="500" y="230" width="70" height="170" rx="8" fill="#0e1a17"/>
+        <circle cx="535" cy="240" r="10" fill="#0a1210" stroke="#5fd6c1" stroke-width="3"/>
+        <circle cx="535" cy="390" r="10" fill="#0a1210" stroke="#5fd6c1" stroke-width="3"/>
+        <rect x="560" y="150" width="90" height="70" rx="6" fill="#0e1a17"/>
+        <line x1="605" y1="150" x2="605" y2="120" stroke="#4d7268" stroke-width="4"/>
+        <circle cx="605" cy="105" r="14" fill="none" stroke="#ffb020" stroke-width="3" opacity="0.75"/>
+      </g>
+      <g fill="none" stroke="#5fd6c1" stroke-width="3" opacity="0.65">
+        <circle cx="150" cy="315" r="26"/>
+        <circle cx="150" cy="315" r="8" fill="#5fd6c1" stroke="none"/>
+      </g>
+      <g fill="#182b26">
+        <rect x="90" y="430" width="440" height="18" rx="3"/>
+        <rect x="120" y="448" width="30" height="26"/>
+        <rect x="460" y="448" width="30" height="26"/>
+      </g>
+      <g stroke="#28e6c4" stroke-width="1.5" opacity="0.4" fill="none">
+        <path d="M0 520 L120 520 L150 550 L800 550"/>
+        <path d="M0 570 L260 570 L290 600 L800 600"/>
+      </g>
+    </svg>
+    <svg class="hero-img circuit" viewBox="0 0 500 620" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <rect width="500" height="620" fill="#081210"/>
+      <g stroke="#28e6c4" stroke-width="2" fill="none" opacity="0.8">
+        <path d="M30 40 H180 V120 H320 V60 H470"/>
+        <path d="M30 140 H120 V220 H260"/>
+        <path d="M260 220 V300 H420 V180"/>
+        <path d="M30 340 H200 V420 H90 V500"/>
+        <path d="M240 400 H470 V480"/>
+        <path d="M60 560 H300 V500 H420"/>
+        <path d="M340 40 V220"/>
+        <path d="M120 480 V620"/>
+      </g>
+      <g fill="#28e6c4" opacity="0.85">
+        <circle cx="30" cy="40" r="5"/><circle cx="180" cy="40" r="5"/><circle cx="320" cy="120" r="5"/>
+        <circle cx="470" cy="60" r="5"/><circle cx="30" cy="140" r="5"/><circle cx="260" cy="220" r="5"/>
+        <circle cx="420" cy="180" r="5"/><circle cx="30" cy="340" r="5"/><circle cx="90" cy="500" r="5"/>
+        <circle cx="470" cy="480" r="5"/><circle cx="60" cy="560" r="5"/><circle cx="420" cy="500" r="5"/>
+      </g>
+      <g fill="none" stroke="#ffb020" stroke-width="2" opacity="0.55">
+        <rect x="150" y="260" width="60" height="60" rx="4"/>
+        <rect x="300" y="360" width="50" height="50" rx="4"/>
+      </g>
+    </svg>
+  </div>
+  <div class="hero-scrim"></div>
+  <div class="hero-content">
+    <div class="hero-eyebrow"><span class="dot"></span> BACKEND REAL — POSTGRESQL + FASTAPI</div>
+    <div class="hero-title">RCM MOTORES<br><span>Reliability Command Center</span></div>
+    <p class="hero-sub">Confiabilidad predictiva para motores controlados por VFD — Weibull con censura real (Máxima Verosimilitud), Montecarlo y AMEF vivo, multiusuario.</p>
+    <div class="hero-hud">
+      <div class="hud-cell"><div class="hud-lbl">Modo crítico activo</div><div class="hud-val warn" id="heroModo">—</div></div>
+      <div class="hud-cell"><div class="hud-lbl">NPR actual (flota)</div><div class="hud-val" id="heroNpr">—</div></div>
+      <div class="hud-cell"><div class="hud-lbl">Motores registrados</div><div class="hud-val" id="heroMotores" style="color:var(--cyan);">—</div></div>
+      <div class="hud-cell"><div class="hud-lbl">Planes pendientes</div><div class="hud-val" id="heroPlanes" style="color:var(--cyan);">—</div></div>
+    </div>
+  </div>
+  <div class="scope-dock">
+    <div class="scope-head"><span>CH1 · VIBRACIÓN RADIAL — 20 mm/s/div</span><span class="live">● LIVE</span></div>
+    <canvas id="scope"></canvas>
+  </div>
+</div>
+
+<div class="config-bar">
+  <label>URL del backend (API):</label>
+  <input id="apiBaseInput" placeholder="https://tu-backend.up.railway.app">
+  <button class="btn-ghost btn-small" id="guardarApiBtn">Guardar</button>
+  <button class="btn-ghost btn-small" id="probarApiBtn">Probar conexión</button>
+  <span class="config-status"><span class="hud-dot" id="conexionDot"></span><span id="conexionTexto">Sin configurar</span></span>
+</div>
+
+<div class="shell">
+  <div class="sidebar">
+    <div class="navitem active" data-view="motores"><span class="n"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> Motores</div>
+    <div class="navitem" data-view="fallas"><span class="n"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span> Historial de fallas</div>
+    <div class="navitem" data-view="amef"><span class="n"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span> Matriz AMEF</div>
+    <div class="navitem" data-view="inventario"><span class="n"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg></span> Inventario</div>
+    <div class="navitem" data-view="montecarlo"><span class="n"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span> Weibull / Montecarlo</div>
+    <div class="navitem" data-view="rcm"><span class="n"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-4"/><path d="M9 14l2 2 4-4"/></svg></span> Plan RCM</div>
+
+    <div style="margin-top:22px;padding:0 22px;border-top:1px solid var(--line);padding-top:16px;">
+      <label style="display:block;">Rol de sesión</label>
+      <select id="rolSesion" style="width:100%;">
+        <option value="Ingeniero">Ingeniero de Confiabilidad</option>
+        <option value="Tecnico">Técnico de Mantenimiento</option>
+        <option value="Gerente">Gerente / Supervisor</option>
+      </select>
+      <p class="hint" style="margin-top:6px;font-size:10px;line-height:1.5;">Cambia lo que puedes editar/aprobar en este navegador. No es seguridad real — el backend todavía no valida el rol del lado del servidor, así que no reemplaza autenticación real.</p>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- ============ MOTORES ============ -->
+    <div class="view active" id="view-motores">
+      <h1>Registro de motores</h1>
+      <p class="subtitle">// ficha técnica completa de cada activo controlado por variador — persistida en PostgreSQL</p>
+
+      <div class="panel">
+        <h2 id="motorFormTitle">Agregar motor</h2>
+        <div class="edit-banner" id="motorEditBanner" style="display:none;">
+          <span>Editando motor <b id="motorEditTag"></b></span>
+          <button class="btn-ghost btn-small" id="cancelarEdicionMotorBtn">Cancelar edición</button>
+        </div>
+
+        <h3 class="sub">Identificación</h3>
+        <div class="grid4">
+          <div class="field"><label>Tag de equipo</label><input id="m_tag" placeholder="MTR-CB-001"></div>
+          <div class="field"><label>Fabricante</label><input id="m_fabricante"></div>
+          <div class="field"><label>Modelo</label><input id="m_modelo"></div>
+          <div class="field"><label>Serial <span style="color:var(--red);">*</span></label><input id="m_serial" placeholder="requerido, único"></div>
+        </div>
+        <div class="grid4">
+          <div class="field"><label>Año</label><input id="m_anio" type="number"></div>
+          <div class="field"><label>Equipo accionado</label><input id="m_equipo_accionado"></div>
+          <div class="field"><label>Cabezal</label><input id="m_cabezal"></div>
+          <div class="field"><label>Criticidad <span style="color:var(--red);">*</span></label>
+            <select id="m_criticidad"><option value="A">A — Crítico</option><option value="B">B — Importante</option><option value="C">C — Bajo impacto</option></select>
+          </div>
+        </div>
+
+        <h3 class="sub">Ubicación</h3>
+        <div class="grid4">
+          <div class="field"><label>Macolla</label><input id="m_macolla"></div>
+          <div class="field"><label>Pozo</label><input id="m_pozo"></div>
+          <div class="field"><label>Unidad</label><input id="m_unidad"></div>
+          <div class="field"><label>División</label><input id="m_division"></div>
+        </div>
+
+        <h3 class="sub">Datos eléctricos</h3>
+        <div class="grid4">
+          <div class="field"><label>Potencia (HP)</label><input id="m_potencia_hp" type="number" step="any"></div>
+          <div class="field"><label>Tensión (V)</label><input id="m_tension" type="number" step="any"></div>
+          <div class="field"><label>Corriente (A)</label><input id="m_corriente" type="number" step="any"></div>
+          <div class="field"><label>Frecuencia (Hz)</label><input id="m_frecuencia" type="number" step="any"></div>
+        </div>
+        <div class="grid4">
+          <div class="field"><label>Fases</label><input id="m_fases" placeholder="Trifásica"></div>
+          <div class="field"><label>Factor de potencia</label><input id="m_fp" type="number" step="any"></div>
+          <div class="field"><label>Eficiencia (%)</label><input id="m_eficiencia" type="number" step="any"></div>
+          <div class="field"><label>Conexión</label><input id="m_conexion" placeholder="Estrella / Delta"></div>
+        </div>
+        <div class="grid4">
+          <div class="field"><label>Factor de servicio (SF)</label><input id="m_sf" type="number" step="any"></div>
+          <div class="field"><label>Corriente de arranque</label><input id="m_corriente_arranque"></div>
+          <div class="field"><label>Clase NEMA</label><input id="m_clase_nema"></div>
+          <div class="field"></div>
+        </div>
+
+        <h3 class="sub">Datos mecánicos</h3>
+        <div class="grid4">
+          <div class="field"><label>RPM nominal</label><input id="m_rpm" type="number" step="any"></div>
+          <div class="field"><label>Polos</label><input id="m_polos" type="number"></div>
+          <div class="field"><label>Montaje</label><input id="m_montaje"></div>
+          <div class="field"><label>Frame</label><input id="m_frame"></div>
+        </div>
+        <div class="grid4">
+          <div class="field"><label>Rodamiento DE</label><input id="m_rodamiento_de"></div>
+          <div class="field"><label>Rodamiento NDE</label><input id="m_rodamiento_nde"></div>
+          <div class="field"><label>Eje</label><input id="m_eje"></div>
+          <div class="field"><label>Peso (kg)</label><input id="m_peso" type="number" step="any"></div>
+        </div>
+        <div class="grid4">
+          <div class="field"><label>Clase de aislamiento</label>
+            <select id="m_aislamiento"><option value="">—</option><option>F</option><option>H</option><option>B</option></select>
+          </div>
+          <div class="field"><label>Grado IP</label><input id="m_ip" placeholder="IP55"></div>
+          <div class="field"><label>Régimen</label><input id="m_regimen" placeholder="Continuo / Intermitente"></div>
+          <div class="field"></div>
+        </div>
+
+        <h3 class="sub">Condición y última prueba</h3>
+        <div class="grid4">
+          <div class="field"><label>Temp. ambiente (°C)</label><input id="m_temp_ambiente" type="number" step="any"></div>
+          <div class="field"><label>Altitud (msnm)</label><input id="m_altitud" type="number" step="any"></div>
+          <div class="field"><label>Fecha última prueba</label><input id="m_fecha_ultima_prueba" type="date"></div>
+          <div class="field"><label>Resistencia aislamiento (MΩ)</label><input id="m_resistencia_aislamiento" type="number" step="any"></div>
+        </div>
+        <div class="grid4">
+          <div class="field"><label>Índice de polarización</label><input id="m_indice_polarizacion" type="number" step="any"></div>
+          <div class="field"><label>Vibración de referencia (mm/s)</label><input id="m_vibracion_ref" type="number" step="any"></div>
+          <div class="field"><label>Temp. rodamientos ref. (°C)</label><input id="m_temp_rodamientos_ref" type="number" step="any"></div>
+          <div class="field"></div>
+        </div>
+
+        <div class="row-actions">
+          <button class="btn" id="addMotorBtn">Guardar motor</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Motores registrados</h2>
+        <div class="grid4" style="margin-bottom:10px;">
+          <div class="field" style="margin-bottom:0;"><label>Filtrar criticidad</label><select id="mf_criticidad"><option value="">Todas</option><option value="A">A</option><option value="B">B</option><option value="C">C</option></select></div>
+          <div class="field" style="margin-bottom:0;"><label>Buscar (tag/serial/modelo)</label><input id="mf_texto" placeholder="texto libre"></div>
+          <div class="field" style="margin-bottom:0;display:flex;align-items:flex-end;"><button class="btn-ghost btn-small" id="filtrarMotoresBtn">Aplicar filtro</button></div>
+          <div class="field" style="margin-bottom:0;display:flex;align-items:flex-end;"><button class="btn-ghost btn-small" id="recargarMotoresBtn">Recargar</button></div>
+        </div>
+        <div class="row-actions" style="margin-top:0;margin-bottom:12px;">
+          <button class="btn-ghost btn-small" id="exportarMotoresBtn">Exportar a Excel</button>
+          <button class="btn-ghost btn-small" id="plantillaMotoresBtn">Descargar plantilla</button>
+          <label class="btn-ghost btn-small" style="cursor:pointer;">Importar desde Excel<input type="file" id="importarMotoresInput" accept=".xlsx,.xls" style="display:none;"></label>
+        </div>
+        <div class="table-wrap" id="motorTableWrap"></div>
+      </div>
+    </div>
+
+    <!-- ============ FALLAS ============ -->
+    <div class="view" id="view-fallas">
+      <h1>Historial operativo y de fallas</h1>
+      <p class="subtitle">// cada evento alimenta el ajuste de Weibull — marca "censurado" si el motor sigue vivo</p>
+
+      <div class="panel">
+        <h2 id="fallaFormTitle">Registrar evento</h2>
+        <div class="edit-banner" id="fallaEditBanner" style="display:none;">
+          <span>Editando evento</span>
+          <button class="btn-ghost btn-small" id="cancelarEdicionFallaBtn">Cancelar edición</button>
+        </div>
+        <div class="grid4">
+          <div class="field"><label>Motor <span style="color:var(--red);">*</span></label><select id="f_motor"></select></div>
+          <div class="field"><label>Modo de falla <span style="color:var(--red);">*</span></label><select id="f_modo"></select></div>
+          <div class="field"><label>Fecha</label><input id="f_fecha" type="date"></div>
+          <div class="field"><label>Estado</label>
+            <select id="f_censurado"><option value="false">Falla ocurrida</option><option value="true">Sigue en operación (censurado)</option></select>
+          </div>
+        </div>
+        <div class="grid4">
+          <div class="field"><label>Horas al evento <span style="color:var(--red);">*</span></label><input id="f_horas" type="number" step="any" placeholder="9800"></div>
+          <div class="field"><label>MTTR (h)</label><input id="f_mttr" type="number" step="any"></div>
+          <div class="field"><label>Horas parada producción</label><input id="f_horas_parada" type="number" step="any"></div>
+          <div class="field"><label>Carga (%)</label><input id="f_carga_pct" type="number" step="any"></div>
+        </div>
+        <div class="grid4">
+          <div class="field"><label>Temperatura registrada</label><input id="f_temp" type="number" step="any"></div>
+          <div class="field"><label>Vibración registrada</label><input id="f_vib" type="number" step="any"></div>
+          <div class="field"><label>Corriente registrada</label><input id="f_corriente" type="number" step="any"></div>
+          <div class="field"><label>Costo reparación (USD)</label><input id="f_costo_reparacion" type="number" step="any"></div>
+        </div>
+        <div class="grid4">
+          <div class="field"><label>Producción perdida (bbl)</label><input id="f_prod_perdida" type="number" step="any"></div>
+          <div class="field"><label>Componente específico</label><input id="f_componente"></div>
+          <div class="field"><label>Orden de trabajo</label><input id="f_orden"></div>
+          <div class="field"><label>Reportado por</label><input id="f_reportado_por"></div>
+        </div>
+        <div class="grid4">
+          <div class="field"><label>Categoría de causa</label><input id="f_categoria_causa" placeholder="Eléctrica / Mecánica / Térmica"></div>
+          <div class="field"><label>Método de análisis</label><input id="f_metodo_analisis" placeholder="RCA / 5 porqués / Ishikawa"></div>
+          <div class="field"><label>Recurrente</label><select id="f_recurrente"><option value="">—</option><option value="Sí">Sí</option><option value="No">No</option></select></div>
+          <div class="field"><label>Repuesto utilizado</label><input id="f_repuesto"></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Causa raíz</label><textarea id="f_causa_raiz"></textarea></div>
+          <div class="field"><label>Acción correctiva</label><textarea id="f_accion_correctiva"></textarea></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Acción preventiva</label><textarea id="f_accion_preventiva"></textarea></div>
+          <div class="field"></div>
+        </div>
+        <div class="row-actions">
+          <button class="btn" id="addFallaBtn">Registrar</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Eventos registrados</h2>
+        <div class="grid4" style="margin-bottom:10px;">
+          <div class="field" style="margin-bottom:0;"><label>Filtrar modo</label><select id="ff_modo"><option value="">Todos</option></select></div>
+          <div class="field" style="margin-bottom:0;"><label>Filtrar motor</label><select id="ff_motor"><option value="">Todos</option></select></div>
+          <div class="field" style="margin-bottom:0;display:flex;align-items:flex-end;"><button class="btn-ghost btn-small" id="filtrarFallasBtn">Aplicar filtro</button></div>
+          <div class="field" style="margin-bottom:0;display:flex;align-items:flex-end;"><button class="btn-ghost btn-small" id="recargarFallasBtn">Recargar</button></div>
+        </div>
+        <div class="row-actions" style="margin-top:0;margin-bottom:12px;">
+          <button class="btn-ghost btn-small" id="exportarFallasBtn">Exportar a Excel</button>
+        </div>
+        <div class="table-wrap" id="fallaTableWrap"></div>
+      </div>
+    </div>
+
+    <!-- ============ AMEF ============ -->
+    <div class="view" id="view-amef">
+      <h1>Matriz AMEF</h1>
+      <p class="subtitle">// severidad y detección editables — ocurrencia se recalcula sola con datos reales de fallas</p>
+      <div class="panel">
+        <div class="grid4" style="margin-bottom:14px;">
+          <div class="field" style="margin-bottom:0;"><label>Ver AMEF de</label>
+            <select id="amef_motor"><option value="">Toda la flota</option></select>
+          </div>
+          <div class="field" style="margin-bottom:0;display:flex;align-items:flex-end;"><button class="btn-ghost btn-small" id="recargarAmefBtn">Recargar</button></div>
+        </div>
+        <div class="table-wrap" id="amefTableWrap"></div>
+      </div>
+    </div>
+
+    <!-- ============ INVENTARIO ============ -->
+    <div class="view" id="view-inventario">
+      <h1>Inventario de repuestos</h1>
+      <p class="subtitle">// repuestos asociados a cada modo de falla — stock, punto de reorden y lead time</p>
+
+      <div class="panel">
+        <h2>Agregar repuesto</h2>
+        <div class="grid4">
+          <div class="field"><label>Nombre <span style="color:var(--red);">*</span></label><input id="inv_nombre" placeholder="Rodamiento 6205-2RS"></div>
+          <div class="field"><label>Modo de falla <span style="color:var(--red);">*</span></label><select id="inv_modo"></select></div>
+          <div class="field"><label>Stock actual</label><input id="inv_stock" type="number" value="0"></div>
+          <div class="field"><label>Punto de reorden</label><input id="inv_reorden" type="number" value="0"></div>
+        </div>
+        <div class="grid4">
+          <div class="field"><label>Lead time (días)</label><input id="inv_lead" type="number" value="0"></div>
+          <div class="field"><label>Costo unitario (USD)</label><input id="inv_costo" type="number" step="any"></div>
+        </div>
+        <div class="row-actions">
+          <button class="btn" id="addInventarioBtn">Guardar repuesto</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Repuestos registrados</h2>
+        <div class="grid4" style="margin-bottom:10px;">
+          <div class="field" style="margin-bottom:0;"><label>Filtrar modo</label><select id="invf_modo"><option value="">Todos</option></select></div>
+          <div class="field" style="margin-bottom:0;display:flex;align-items:flex-end;"><button class="btn-ghost btn-small" id="filtrarInventarioBtn">Aplicar filtro</button></div>
+        </div>
+        <div class="table-wrap" id="inventarioTableWrap"></div>
+      </div>
+    </div>
+
+    <!-- ============ MONTECARLO ============ -->
+    <div class="view" id="view-montecarlo">
+      <h1>Ajuste de Weibull y Montecarlo</h1>
+      <p class="subtitle">// Máxima Verosimilitud con censura real — motor de cálculo en el backend</p>
+
+      <div class="panel">
+        <h2>Configurar simulación</h2>
+        <div class="grid4">
+          <div class="field"><label>Modo de falla</label><select id="mc_modo"></select></div>
+          <div class="field"><label>Motor (opcional)</label><select id="mc_motor"><option value="">— Toda la flota —</option></select></div>
+          <div class="field"><label>Iteraciones</label><input id="mc_iter" type="number" value="10000"></div>
+          <div class="field"><label>Sigma MTTR (lognormal)</label><input id="mc_sigma" type="number" value="0.5" step="0.1"></div>
+        </div>
+        <button class="btn" id="runMcBtn">Ejecutar simulación</button>
+        <div class="hint" id="mcDataHint"></div>
+      </div>
+
+      <div id="mcResults" style="display:none;">
+        <div class="panel">
+          <h2>Parámetros ajustados (Máxima Verosimilitud)</h2>
+          <div class="stat-row">
+            <div class="stat"><div class="lbl">Beta</div><div class="val" id="statBeta">—</div></div>
+            <div class="stat"><div class="lbl">Eta (h)</div><div class="val" id="statEta">—</div></div>
+            <div class="stat"><div class="lbl">IC 90% de Beta</div><div class="val" id="statBetaIc" style="font-size:14px;">—</div></div>
+            <div class="stat"><div class="lbl">Fallas / censurados usados</div><div class="val" id="statNUsados" style="font-size:14px;">—</div></div>
+          </div>
+          <div class="stat-row">
+            <div class="stat"><div class="lbl">MTBF simulado (h)</div><div class="val" id="statMtbf">—</div></div>
+            <div class="stat"><div class="lbl">MTBF IC 90%</div><div class="val" id="statMtbfIc" style="font-size:14px;">—</div></div>
+            <div class="stat"><div class="lbl">MTTR simulado (h)</div><div class="val" id="statMttr">—</div></div>
+            <div class="stat"><div class="lbl">B10 life (h)</div><div class="val" id="statB10">—</div></div>
+          </div>
+          <p class="hint" id="mcInterpretation"></p>
+        </div>
+        <div class="grid2">
+          <div class="panel"><h2>Curva de confiabilidad F(t)</h2><div class="chart-box"><canvas id="chartFt"></canvas></div></div>
+          <div class="panel"><h2>Distribución de TTF simulados</h2><div class="chart-box"><canvas id="chartHist"></canvas></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ PLAN RCM ============ -->
+    <div class="view" id="view-rcm">
+      <h1>Plan de mantenimiento (RCM)</h1>
+      <p class="subtitle">// cruce de NPR con la probabilidad de falla — con flujo de aprobación</p>
+
+      <div class="panel">
+        <h2>Costos del modo de falla</h2>
+        <p class="hint" id="rcmBaseInfo">// ejecuta primero una simulación de Weibull/Montecarlo — el plan se genera a partir de su resultado</p>
+        <div class="grid3">
+          <div class="field"><label>Costo preventivo (USD/h)</label><input id="c_prev" type="number" value="800"></div>
+          <div class="field"><label>Costo de falla catastrófica (USD)</label><input id="c_fail" type="number" value="15000"></div>
+          <div class="field"><label>Costo parada producción (USD/h)</label><input id="c_prod" type="number" value="500"></div>
+        </div>
+        <button class="btn" id="calcRcmBtn">Calcular plan óptimo</button>
+      </div>
+
+      <div id="rcmResults" style="display:none;">
+        <div class="panel">
+          <h2>Intervalo óptimo <span class="badge estado-borrador" id="rcmEstadoBadge">Borrador</span></h2>
+          <div class="stat-row">
+            <div class="stat"><div class="lbl">Intervalo óptimo (h)</div><div class="val" id="statOptT">—</div></div>
+            <div class="stat"><div class="lbl">Costo total esperado</div><div class="val" id="statOptCost">—</div></div>
+            <div class="stat"><div class="lbl">Estrategia</div><div class="val" id="statStrategy" style="font-size:14px;">—</div></div>
+          </div>
+          <div class="chart-box"><canvas id="chartCost"></canvas></div>
+        </div>
+        <div class="panel"><h2>Rutina prescrita</h2><div id="routineList"></div></div>
+        <div class="panel">
+          <h2>Flujo de aprobación</h2>
+          <div class="row-actions">
+            <button class="btn-ghost" id="enviarAprobacionBtn">Enviar a aprobación</button>
+            <button class="btn-ghost" id="aprobarPlanBtn">Aprobar</button>
+            <button class="btn-danger" id="rechazarPlanBtn" style="padding:9px 16px;font-size:13px;">Rechazar</button>
+          </div>
+          <div class="field" style="margin-top:12px;"><label>Comentario (obligatorio para rechazar)</label><textarea id="rcm_comentario"></textarea></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Planes generados</h2>
+        <div class="grid4" style="margin-bottom:10px;">
+          <div class="field" style="margin-bottom:0;"><label>Filtrar estado</label>
+            <select id="planf_estado"><option value="">Todos</option><option value="Borrador">Borrador</option><option value="Pendiente">Pendiente</option><option value="Aprobado">Aprobado</option><option value="Rechazado">Rechazado</option></select>
+          </div>
+          <div class="field" style="margin-bottom:0;display:flex;align-items:flex-end;"><button class="btn-ghost btn-small" id="filtrarPlanesBtn">Aplicar filtro</button></div>
+        </div>
+        <div class="table-wrap" id="planesTableWrap"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ===== OSCILLOSCOPE (decorativo, forma de onda estilo CRT) ===== */
+const scopeCanvas = document.getElementById('scope');
+if(scopeCanvas){
+  const sctx = scopeCanvas.getContext('2d');
+  function resizeScope(){ scopeCanvas.width = scopeCanvas.clientWidth * 2; scopeCanvas.height = scopeCanvas.clientHeight * 2; }
+  resizeScope();
+  window.addEventListener('resize', resizeScope);
+  let scopeT = 0;
+  function drawScope(){
+    const w = scopeCanvas.width, h = scopeCanvas.height;
+    sctx.fillStyle = '#050a09'; sctx.fillRect(0,0,w,h);
+    sctx.strokeStyle = 'rgba(40,230,196,0.12)'; sctx.lineWidth = 1;
+    for(let x=0;x<w;x+=w/10){ sctx.beginPath(); sctx.moveTo(x,0); sctx.lineTo(x,h); sctx.stroke(); }
+    for(let y=0;y<h;y+=h/6){ sctx.beginPath(); sctx.moveTo(0,y); sctx.lineTo(w,y); sctx.stroke(); }
+    sctx.strokeStyle = '#28e6c4'; sctx.shadowColor = '#28e6c4'; sctx.shadowBlur = 6; sctx.lineWidth = 2;
+    sctx.beginPath();
+    for(let x=0;x<w;x++){
+      const t = x/w*Math.PI*8 + scopeT;
+      const y = h/2 + Math.sin(t)*h*0.16 + Math.sin(t*3.7+1)*h*0.05 + (Math.random()-0.5)*h*0.02;
+      if(x===0) sctx.moveTo(x,y); else sctx.lineTo(x,y);
+    }
+    sctx.stroke(); sctx.shadowBlur = 0;
+    scopeT += 0.09;
+    requestAnimationFrame(drawScope);
+  }
+  drawScope();
+}
+
+/* ===== ROL DE SESIÓN Y PERMISOS (solo en este navegador — el backend aún no valida rol del lado del servidor) ===== */
+const PERMISOS = {
+  Ingeniero: { editarMotores:true, registrarFallas:true, editarFallas:true, editarAmef:true, editarInventario:true, generarPlan:true, aprobarPlan:false },
+  Tecnico:   { editarMotores:false, registrarFallas:true, editarFallas:false, editarAmef:false, editarInventario:true, generarPlan:false, aprobarPlan:false },
+  Gerente:   { editarMotores:false, registrarFallas:false, editarFallas:false, editarAmef:false, editarInventario:false, generarPlan:false, aprobarPlan:true }
+};
+const ROL_NOMBRES = { Ingeniero:'Ingeniero de Confiabilidad', Tecnico:'Técnico de Mantenimiento', Gerente:'Gerente / Supervisor' };
+let currentRole = localStorage.getItem('rcm_rol') || 'Ingeniero';
+function puede(accion){ return !!(PERMISOS[currentRole] && PERMISOS[currentRole][accion]); }
+function bloquearAccion(mensaje){ showToast(`Tu rol (${ROL_NOMBRES[currentRole]}) no tiene permiso para esto. ${mensaje}`, 'error'); }
+document.getElementById('rolSesion').value = currentRole;
+document.getElementById('rolSesion').onchange = (e)=>{
+  currentRole = e.target.value;
+  localStorage.setItem('rcm_rol', currentRole);
+  renderPlanesTable();
+  renderAmefTable();
+};
+
+// URL por defecto del backend ya desplegado (el usuario puede cambiarla arriba si algún día se mueve).
+const DEFAULT_API_BASE = 'https://rcm-backend-production-bbff.up.railway.app';
+function getApiBase(){ return (localStorage.getItem('rcm_api_base') || DEFAULT_API_BASE).replace(/\/+$/,''); }
+function setApiBase(v){ localStorage.setItem('rcm_api_base', v.trim()); }
+
+function showToast(msg, type){
+  const wrap = document.getElementById('toastWrap');
+  const el = document.createElement('div');
+  el.className = 'toast' + (type==='error' ? ' toast-error' : '');
+  el.textContent = msg;
+  wrap.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>el.remove(), 300); }, 4500);
+}
+
+function setConexionEstado(ok, texto){
+  document.getElementById('conexionDot').className = 'hud-dot ' + (ok===true ? 'on' : ok===false ? 'off' : '');
+  document.getElementById('conexionTexto').textContent = texto;
+}
+
+async function apiFetch(path, options){
+  options = options || {};
+  const base = getApiBase();
+  if(!base){
+    showToast('Configura primero la URL del backend arriba y presiona "Guardar".', 'error');
+    throw new Error('sin-api-base');
+  }
+  let res;
+  try{
+    res = await fetch(base + path, Object.assign({headers:{'Content-Type':'application/json'}}, options));
+  }catch(e){
+    showToast('No se pudo contactar al backend en esa URL (revisa CORS / que esté en línea).', 'error');
+    throw e;
+  }
+  if(!res.ok){
+    let detail = res.status + ' ' + res.statusText;
+    try{ const j = await res.json(); if(j && j.detail) detail = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail); }catch(e){}
+    showToast('Error: ' + detail, 'error');
+    throw new Error(detail);
+  }
+  if(res.status === 204) return null;
+  return res.json();
+}
+const apiGet = (p) => apiFetch(p);
+const apiPost = (p, body) => apiFetch(p, {method:'POST', body: JSON.stringify(body)});
+const apiPut = (p, body) => apiFetch(p, {method:'PUT', body: JSON.stringify(body)});
+const apiDelete = (p) => apiFetch(p, {method:'DELETE'});
+
+async function probarConexion(){
+  const base = getApiBase();
+  if(!base){ setConexionEstado(false, 'Sin configurar'); showToast('Escribe primero la URL del backend.', 'error'); return; }
+  try{
+    const res = await fetch(base + '/health');
+    if(!res.ok) throw new Error('bad status');
+    setConexionEstado(true, 'Conectado');
+    showToast('Conexión con el backend OK.', 'success');
+    await cargarTodo();
+  }catch(e){
+    setConexionEstado(false, 'Sin conexión');
+    showToast('No se pudo conectar. Revisa la URL, que el backend esté corriendo y CORS.', 'error');
+  }
+}
+
+document.getElementById('guardarApiBtn').onclick = ()=>{
+  setApiBase(document.getElementById('apiBaseInput').value);
+  showToast('URL guardada en este navegador.', 'success');
+  probarConexion();
+};
+document.getElementById('probarApiBtn').onclick = probarConexion;
+
+/* ================================================================
+   UTILIDADES
+   ================================================================ */
+function escapeHtml(str){
+  if(str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function numOrNull(id){ const v = document.getElementById(id).value; return v === '' ? null : parseFloat(v); }
+function intOrNull(id){ const v = document.getElementById(id).value; return v === '' ? null : parseInt(v); }
+function txtOrNull(id){ const v = document.getElementById(id).value.trim(); return v === '' ? null : v; }
+function dateOrNull(id){ const v = document.getElementById(id).value; return v === '' ? null : v; }
+function shortId(id){ return id ? String(id).slice(0,8)+'…' : '—'; }
+
+/* Convierte un array de dicts "opacos" que devuelve el backend (curva_ft,
+   histograma_ttf, curva_costo) en {labels, data} tomando la primera clave
+   como eje X y la segunda como eje Y — sin asumir nombres de campo exactos. */
+function pointsToSeries(arr){
+  if(!arr || !arr.length) return {labels:[], data:[]};
+  const keys = Object.keys(arr[0]);
+  const kx = keys[0], ky = keys.length > 1 ? keys[1] : keys[0];
+  return { labels: arr.map(p=>p[kx]), data: arr.map(p=>Number(p[ky])) };
+}
+/* Igual de genérico para renderizar la rutina prescrita: cada dict se
+   muestra como una etiqueta (primer campo) + el resto de campos como detalle. */
+function renderRutinaGenerica(rutina){
+  if(!rutina || !rutina.length) return '<div class="empty">// sin rutina generada</div>';
+  return rutina.map(step=>{
+    const entries = Object.entries(step);
+    const [, firstVal] = entries[0] || ['', ''];
+    const rest = entries.slice(1);
+    return `<div class="routine-step">
+      <div class="pct">${escapeHtml(firstVal)}</div>
+      <div class="body">${rest.map(([k,v])=>`<p><b>${escapeHtml(k.replace(/_/g,' '))}:</b> ${escapeHtml(v)}</p>`).join('')}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ================================================================
+   ESTADO EN MEMORIA
+   ================================================================ */
+let MOTORES = [];
+let MODOS = [];       // {id_modo, clave, nombre}
+let editingMotorId = null;
+let editingFallaId = null;
+let lastSimulacion = null; // {id_simulacion, id_motor, beta, eta, modo}
+let lastPlan = null;       // {id_plan, ...}
+let charts = {};
+function destroyChart(k){ if(charts[k]){ charts[k].destroy(); delete charts[k]; } }
+
+/* ================================================================
+   NAVEGACIÓN
+   ================================================================ */
+document.querySelectorAll('.navitem').forEach(item=>{
+  item.addEventListener('click', ()=>{
+    document.querySelectorAll('.navitem').forEach(i=>i.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    item.classList.add('active');
+    document.getElementById('view-'+item.dataset.view).classList.add('active');
+    const v = item.dataset.view;
+    if(v==='fallas') renderFallaTable();
+    if(v==='amef') renderAmefTable();
+    if(v==='inventario') renderInventarioTable();
+    if(v==='rcm') renderPlanesTable();
+  });
+});
+
+/* ================================================================
+   CARGA INICIAL
+   ================================================================ */
+async function cargarTodo(){
+  await cargarModos();
+  await cargarMotores();
+  await actualizarHeroHud();
+}
+
+async function cargarModos(){
+  try{
+    const amef = await apiGet('/amef');
+    MODOS = amef.map(a=>({id_modo:a.id_modo, clave:a.clave, nombre:a.nombre}));
+  }catch(e){ MODOS = []; }
+  const opts = MODOS.map(m=>`<option value="${escapeHtml(m.clave)}">${escapeHtml(m.nombre)}</option>`).join('');
+  ['f_modo','inv_modo','mc_modo'].forEach(id=>{ document.getElementById(id).innerHTML = opts; });
+  const optsBlank = '<option value="">Todos</option>' + opts;
+  ['ff_modo','invf_modo'].forEach(id=>{ document.getElementById(id).innerHTML = optsBlank; });
+}
+
+async function cargarMotores(){
+  try{ MOTORES = await apiGet('/motores'); }catch(e){ MOTORES = []; }
+  renderMotorTable();
+  const opts = MOTORES.map(m=>`<option value="${m.id_motor}">${escapeHtml(m.tag || m.serial)}</option>`).join('');
+  document.getElementById('f_motor').innerHTML = opts || '<option value="">Sin motores registrados</option>';
+  const optsBlanco = '<option value="">Todos</option>' + opts;
+  ['ff_motor'].forEach(id=>{ document.getElementById(id).innerHTML = optsBlanco; });
+  const optsFlota = '<option value="">— Toda la flota —</option>' + opts;
+  ['mc_motor','amef_motor'].forEach(id=>{ document.getElementById(id).innerHTML = optsFlota; });
+}
+
+async function actualizarHeroHud(){
+  document.getElementById('heroMotores').textContent = MOTORES.length;
+  try{
+    const amef = await apiGet('/amef');
+    let worst = null;
+    amef.forEach(a=>{ if(!worst || a.npr > worst.npr) worst = a; });
+    if(worst){
+      document.getElementById('heroModo').textContent = worst.nombre;
+      const nprEl = document.getElementById('heroNpr');
+      nprEl.textContent = worst.npr;
+      nprEl.className = 'hud-val ' + (worst.npr>=200?'crit':worst.npr>=100?'warn':'');
+    }
+  }catch(e){}
+  try{
+    const planes = await apiGet('/rcm/planes?estado=Pendiente');
+    document.getElementById('heroPlanes').textContent = planes.length;
+  }catch(e){ document.getElementById('heroPlanes').textContent = '—'; }
+}
+
+/* ================================================================
+   MOTORES
+   ================================================================ */
+const MOTOR_FIELDS = ['tag','fabricante','modelo','serial','anio','equipo_accionado','macolla','pozo','unidad','division',
+  'potencia_hp','tension','corriente','frecuencia','fases','fp','eficiencia','conexion','sf','rpm','polos','montaje','frame',
+  'rodamiento_de','rodamiento_nde','eje','peso','aislamiento','ip','regimen','temp_ambiente','altitud','clase_nema',
+  'corriente_arranque','fecha_ultima_prueba','resistencia_aislamiento','indice_polarizacion','vibracion_ref',
+  'temp_rodamientos_ref','cabezal','criticidad'];
+const MOTOR_NUM_FIELDS = new Set(['potencia_hp','tension','corriente','frecuencia','fp','eficiencia','sf','rpm','peso',
+  'temp_ambiente','altitud','resistencia_aislamiento','indice_polarizacion','vibracion_ref','temp_rodamientos_ref']);
+const MOTOR_INT_FIELDS = new Set(['anio','polos']);
+const MOTOR_DATE_FIELDS = new Set(['fecha_ultima_prueba']);
+
+function collectMotorPayload(){
+  const payload = {};
+  MOTOR_FIELDS.forEach(f=>{
+    const id = 'm_'+f;
+    if(MOTOR_NUM_FIELDS.has(f)) payload[f] = numOrNull(id);
+    else if(MOTOR_INT_FIELDS.has(f)) payload[f] = intOrNull(id);
+    else if(MOTOR_DATE_FIELDS.has(f)) payload[f] = dateOrNull(id);
+    else payload[f] = txtOrNull(id);
+  });
+  return payload;
+}
+function fillMotorForm(m){
+  MOTOR_FIELDS.forEach(f=>{
+    const el = document.getElementById('m_'+f);
+    el.value = (m[f] === null || m[f] === undefined) ? '' : m[f];
+  });
+}
+function limpiarMotorForm(){
+  MOTOR_FIELDS.forEach(f=>{ document.getElementById('m_'+f).value = ''; });
+  document.getElementById('m_criticidad').value = 'A';
+}
+
+document.getElementById('addMotorBtn').onclick = async ()=>{
+  if(!puede('editarMotores')){ bloquearAccion('Solo el Ingeniero de Confiabilidad puede agregar o editar motores.'); return; }
+  const payload = collectMotorPayload();
+  if(!payload.serial){ showToast('El serial es obligatorio.', 'error'); return; }
+  if(!['A','B','C'].includes(payload.criticidad)){ showToast('Selecciona una criticidad válida.', 'error'); return; }
+  const btn = document.getElementById('addMotorBtn');
+  btn.disabled = true;
+  try{
+    if(editingMotorId){
+      await apiPut('/motores/'+editingMotorId, payload);
+      showToast('Motor actualizado.', 'success');
+    }else{
+      await apiPost('/motores', payload);
+      showToast('Motor registrado.', 'success');
+    }
+    cancelarEdicionMotor();
+    await cargarMotores();
+  }catch(e){ /* el toast de error ya se mostró en apiFetch */ }
+  finally{ btn.disabled = false; }
+};
+
+function iniciarEdicionMotor(m){
+  editingMotorId = m.id_motor;
+  fillMotorForm(m);
+  document.getElementById('motorFormTitle').textContent = 'Editar motor';
+  document.getElementById('motorEditBanner').style.display = 'flex';
+  document.getElementById('motorEditTag').textContent = m.tag || m.serial;
+  document.getElementById('addMotorBtn').textContent = 'Guardar cambios';
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+function cancelarEdicionMotor(){
+  editingMotorId = null;
+  limpiarMotorForm();
+  document.getElementById('motorFormTitle').textContent = 'Agregar motor';
+  document.getElementById('motorEditBanner').style.display = 'none';
+  document.getElementById('addMotorBtn').textContent = 'Guardar motor';
+}
+document.getElementById('cancelarEdicionMotorBtn').onclick = cancelarEdicionMotor;
+
+function renderMotorTable(){
+  const wrap = document.getElementById('motorTableWrap');
+  if(MOTORES.length===0){ wrap.innerHTML = '<div class="empty">// sin motores registrados</div>'; return; }
+  let html = '<table><tr><th>Tag</th><th>Serial</th><th>Fabricante/Modelo</th><th>HP</th><th>RPM</th><th>Crit.</th><th></th></tr>';
+  MOTORES.forEach(m=>{
+    html += `<tr><td class="txt">${escapeHtml(m.tag||'—')}</td><td class="txt">${escapeHtml(m.serial)}</td>
+      <td class="txt">${escapeHtml([m.fabricante,m.modelo].filter(Boolean).join(' / ')||'—')}</td>
+      <td>${m.potencia_hp ?? '—'}</td><td>${m.rpm ?? '—'}</td>
+      <td><span class="badge ${m.criticidad==='A'?'high':m.criticidad==='B'?'mid':'low'}">${m.criticidad}</span></td>
+      <td><button class="btn-ghost btn-small" data-edit="${m.id_motor}">Editar</button>
+      <button class="btn-danger" data-del="${m.id_motor}" style="margin-left:6px;">Eliminar</button></td></tr>`;
+  });
+  wrap.innerHTML = html+'</table>';
+  wrap.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{
+    if(!puede('editarMotores')){ bloquearAccion('Solo el Ingeniero de Confiabilidad puede editar motores.'); return; }
+    const m = MOTORES.find(x=>x.id_motor===b.dataset.edit);
+    if(m) iniciarEdicionMotor(m);
+  });
+  wrap.querySelectorAll('[data-del]').forEach(b=>b.onclick=async ()=>{
+    if(!puede('editarMotores')){ bloquearAccion('Solo el Ingeniero de Confiabilidad puede eliminar motores.'); return; }
+    if(!confirm('¿Eliminar este motor? Esta acción no se puede deshacer.')) return;
+    try{ await apiDelete('/motores/'+b.dataset.del); showToast('Motor eliminado.', 'success'); await cargarMotores(); }catch(e){}
+  });
+}
+
+document.getElementById('filtrarMotoresBtn').onclick = async ()=>{
+  const params = new URLSearchParams();
+  const crit = document.getElementById('mf_criticidad').value;
+  const texto = document.getElementById('mf_texto').value.trim();
+  if(crit) params.set('criticidad', crit);
+  if(texto) params.set('texto', texto);
+  try{ MOTORES = await apiGet('/motores?'+params.toString()); renderMotorTable(); }catch(e){}
+};
+document.getElementById('recargarMotoresBtn').onclick = cargarMotores;
+
+document.getElementById('exportarMotoresBtn').onclick = ()=>{
+  if(!MOTORES.length){ showToast('No hay motores para exportar.', 'error'); return; }
+  const filas = MOTORES.map(m=>{ const fila={}; MOTOR_FIELDS.forEach(f=>fila[f]=m[f] ?? ''); return fila; });
+  const ws = XLSX.utils.json_to_sheet(filas);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Motores');
+  XLSX.writeFile(wb, 'motores_rcm.xlsx');
+};
+document.getElementById('plantillaMotoresBtn').onclick = ()=>{
+  const filaEjemplo = {}; MOTOR_FIELDS.forEach(f=>filaEjemplo[f]='');
+  filaEjemplo.criticidad = 'A';
+  const ws = XLSX.utils.json_to_sheet([filaEjemplo]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Plantilla');
+  XLSX.writeFile(wb, 'plantilla_motores.xlsx');
+};
+document.getElementById('importarMotoresInput').onchange = async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  if(!puede('editarMotores')){ bloquearAccion('Solo el Ingeniero de Confiabilidad puede importar motores.'); e.target.value=''; return; }
+  const data = await file.arrayBuffer();
+  const wb = XLSX.read(data);
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const filas = XLSX.utils.sheet_to_json(ws, {defval:''});
+  if(!filas.length){ showToast('El archivo no tiene filas.', 'error'); e.target.value=''; return; }
+  let ok=0, fail=0;
+  for(const fila of filas){
+    const payload = {};
+    MOTOR_FIELDS.forEach(f=>{
+      let v = fila[f];
+      if(v === '' || v === undefined || v === null){ payload[f] = null; return; }
+      if(MOTOR_NUM_FIELDS.has(f)) payload[f] = parseFloat(v);
+      else if(MOTOR_INT_FIELDS.has(f)) payload[f] = parseInt(v);
+      else payload[f] = String(v).trim();
+    });
+    if(!payload.serial || !['A','B','C'].includes(payload.criticidad)){ fail++; continue; }
+    try{ await apiPost('/motores', payload); ok++; }catch(e){ fail++; }
+  }
+  showToast(`Importación completa: ${ok} motores creados, ${fail} con error.`, fail>0?'error':'success');
+  e.target.value = '';
+  await cargarMotores();
+};
+
+/* ================================================================
+   FALLAS
+   ================================================================ */
+const FALLA_FIELDS = ['fecha','componente_especifico','orden_trabajo','reportado_por','causa_raiz','categoria_causa',
+  'metodo_analisis','accion_correctiva','accion_preventiva','recurrente','horas_operacion_al_evento','carga_pct',
+  'temperatura_registrada','vibracion_registrada','corriente_registrada','mttr','horas_parada_produccion',
+  'costo_reparacion','produccion_perdida_bbl','repuesto_utilizado'];
+const FALLA_ID_MAP = {fecha:'f_fecha', componente_especifico:'f_componente', orden_trabajo:'f_orden',
+  reportado_por:'f_reportado_por', causa_raiz:'f_causa_raiz', categoria_causa:'f_categoria_causa',
+  metodo_analisis:'f_metodo_analisis', accion_correctiva:'f_accion_correctiva', accion_preventiva:'f_accion_preventiva',
+  recurrente:'f_recurrente', horas_operacion_al_evento:'f_horas', carga_pct:'f_carga_pct',
+  temperatura_registrada:'f_temp', vibracion_registrada:'f_vib', corriente_registrada:'f_corriente', mttr:'f_mttr',
+  horas_parada_produccion:'f_horas_parada', costo_reparacion:'f_costo_reparacion',
+  produccion_perdida_bbl:'f_prod_perdida', repuesto_utilizado:'f_repuesto'};
+const FALLA_NUM = new Set(['horas_operacion_al_evento','carga_pct','temperatura_registrada','vibracion_registrada',
+  'corriente_registrada','mttr','horas_parada_produccion','costo_reparacion','produccion_perdida_bbl']);
+const FALLA_DATE = new Set(['fecha']);
+
+function collectFallaPayload(){
+  const payload = { id_motor: document.getElementById('f_motor').value, modo: document.getElementById('f_modo').value,
+    censurado: document.getElementById('f_censurado').value === 'true' };
+  FALLA_FIELDS.forEach(f=>{
+    const id = FALLA_ID_MAP[f];
+    if(FALLA_NUM.has(f)) payload[f] = numOrNull(id);
+    else if(FALLA_DATE.has(f)) payload[f] = dateOrNull(id);
+    else payload[f] = txtOrNull(id);
+  });
+  return payload;
+}
+function limpiarFallaForm(){
+  FALLA_FIELDS.forEach(f=>{ document.getElementById(FALLA_ID_MAP[f]).value = ''; });
+  document.getElementById('f_censurado').value = 'false';
+}
+function fillFallaForm(f){
+  document.getElementById('f_motor').value = f.id_motor;
+  document.getElementById('f_modo').value = f.modo;
+  document.getElementById('f_censurado').value = f.censurado ? 'true' : 'false';
+  FALLA_FIELDS.forEach(k=>{
+    const el = document.getElementById(FALLA_ID_MAP[k]);
+    el.value = (f[k] === null || f[k] === undefined) ? '' : f[k];
+  });
+}
+
+document.getElementById('addFallaBtn').onclick = async ()=>{
+  if(editingFallaId){ if(!puede('editarFallas')){ bloquearAccion('Solo el Ingeniero de Confiabilidad puede editar eventos ya registrados.'); return; } }
+  else { if(!puede('registrarFallas')){ bloquearAccion('El rol Gerente no registra eventos directamente — corresponde a Ingeniero o Técnico.'); return; } }
+  const payload = collectFallaPayload();
+  if(!payload.id_motor){ showToast('Selecciona un motor.', 'error'); return; }
+  if(!payload.modo){ showToast('Selecciona un modo de falla.', 'error'); return; }
+  if(payload.horas_operacion_al_evento === null || payload.horas_operacion_al_evento < 0){ showToast('Indica las horas de operación.', 'error'); return; }
+  const btn = document.getElementById('addFallaBtn');
+  btn.disabled = true;
+  try{
+    if(editingFallaId){
+      await apiPut('/fallas/'+editingFallaId, payload);
+      showToast('Evento actualizado.', 'success');
+    }else{
+      await apiPost('/fallas', payload);
+      showToast('Evento registrado.', 'success');
+    }
+    cancelarEdicionFalla();
+    await renderFallaTable();
+  }catch(e){}
+  finally{ btn.disabled = false; }
+};
+
+function cancelarEdicionFalla(){
+  editingFallaId = null;
+  limpiarFallaForm();
+  document.getElementById('fallaFormTitle').textContent = 'Registrar evento';
+  document.getElementById('fallaEditBanner').style.display = 'none';
+  document.getElementById('addFallaBtn').textContent = 'Registrar';
+}
+document.getElementById('cancelarEdicionFallaBtn').onclick = cancelarEdicionFalla;
+
+let ultimasFallas = [];
+async function renderFallaTable(){
+  const wrap = document.getElementById('fallaTableWrap');
+  try{ ultimasFallas = await apiGet('/fallas'); }catch(e){ ultimasFallas = []; }
+  pintarFallaTable(ultimasFallas);
+}
+function pintarFallaTable(fallas){
+  const wrap = document.getElementById('fallaTableWrap');
+  if(!fallas.length){ wrap.innerHTML = '<div class="empty">// sin eventos registrados</div>'; return; }
+  let html = '<table><tr><th>Motor</th><th>Modo</th><th>Fecha</th><th>Horas</th><th>MTTR</th><th>Estado</th><th></th></tr>';
+  fallas.forEach(f=>{
+    const motor = MOTORES.find(m=>m.id_motor===f.id_motor);
+    const modo = MODOS.find(md=>md.clave===f.modo);
+    html += `<tr><td class="txt">${escapeHtml(motor?(motor.tag||motor.serial):shortId(f.id_motor))}</td>
+      <td class="txt">${escapeHtml(modo?modo.nombre:f.modo)}</td><td>${escapeHtml(f.fecha||'—')}</td>
+      <td>${f.horas_operacion_al_evento}</td><td>${f.mttr ?? '—'}</td>
+      <td class="txt">${f.censurado ? 'En operación' : 'Falló'}</td>
+      <td><button class="btn-ghost btn-small" data-edit="${f.id_falla}">Editar</button>
+      <button class="btn-danger" data-del="${f.id_falla}" style="margin-left:6px;">Eliminar</button></td></tr>`;
+  });
+  wrap.innerHTML = html+'</table>';
+  wrap.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{
+    if(!puede('editarFallas')){ bloquearAccion('Solo el Ingeniero de Confiabilidad puede editar eventos ya registrados.'); return; }
+    const f = ultimasFallas.find(x=>x.id_falla===b.dataset.edit);
+    if(!f) return;
+    editingFallaId = f.id_falla;
+    fillFallaForm(f);
+    document.getElementById('fallaFormTitle').textContent = 'Editar evento';
+    document.getElementById('fallaEditBanner').style.display = 'flex';
+    document.getElementById('addFallaBtn').textContent = 'Guardar cambios';
+    window.scrollTo({top:0, behavior:'smooth'});
+  });
+  wrap.querySelectorAll('[data-del]').forEach(b=>b.onclick=async ()=>{
+    if(!puede('editarFallas')){ bloquearAccion('Solo el Ingeniero de Confiabilidad puede eliminar eventos registrados.'); return; }
+    if(!confirm('¿Eliminar este evento de falla?')) return;
+    try{ await apiDelete('/fallas/'+b.dataset.del); showToast('Evento eliminado.', 'success'); await renderFallaTable(); }catch(e){}
+  });
+}
+document.getElementById('filtrarFallasBtn').onclick = async ()=>{
+  const params = new URLSearchParams();
+  const modo = document.getElementById('ff_modo').value;
+  const motor = document.getElementById('ff_motor').value;
+  if(modo) params.set('modo', modo);
+  if(motor) params.set('id_motor', motor);
+  try{ const fallas = await apiGet('/fallas?'+params.toString()); pintarFallaTable(fallas); }catch(e){}
+};
+document.getElementById('recargarFallasBtn').onclick = renderFallaTable;
+
+document.getElementById('exportarFallasBtn').onclick = ()=>{
+  if(!ultimasFallas.length){ showToast('No hay eventos para exportar.', 'error'); return; }
+  const filas = ultimasFallas.map(f=>{
+    const motor = MOTORES.find(m=>m.id_motor===f.id_motor);
+    const fila = { motor: motor ? (motor.tag||motor.serial) : f.id_motor, modo: f.modo };
+    FALLA_FIELDS.forEach(k=>fila[k]=f[k] ?? '');
+    fila.censurado = f.censurado ? 'Sí' : 'No';
+    return fila;
+  });
+  const ws = XLSX.utils.json_to_sheet(filas);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Fallas');
+  XLSX.writeFile(wb, 'historial_fallas_rcm.xlsx');
+};
+
+/* ================================================================
+   AMEF
+   ================================================================ */
+async function renderAmefTable(){
+  const wrap = document.getElementById('amefTableWrap');
+  const idMotor = document.getElementById('amef_motor').value;
+  let amef;
+  try{ amef = await apiGet('/amef' + (idMotor ? ('?id_motor='+idMotor) : '')); }catch(e){ wrap.innerHTML = '<div class="empty">// no se pudo cargar el AMEF</div>'; return; }
+  let html = '<table><tr><th>Modo</th><th>S</th><th>O</th><th>D</th><th>NPR</th><th>Técnica de detección</th><th>ISO modo / mecanismo</th></tr>';
+  amef.forEach(a=>{
+    const nivel = a.npr>=200?'high':a.npr>=100?'mid':'low';
+    html += `<tr><td class="txt">${escapeHtml(a.nombre)}</td>
+      <td><input type="number" min="1" max="10" value="${a.severidad}" style="width:55px;" data-id="${a.id_modo}" data-field="severidad"></td>
+      <td>${a.ocurrencia_es_calculada ? a.ocurrencia+' <span style="font-family:var(--sans);color:var(--muted);font-size:10px;">(calc)</span>' : `<input type="number" min="1" max="10" value="${a.ocurrencia}" style="width:55px;" data-id="${a.id_modo}" data-field="ocurrencia_manual">`}</td>
+      <td><input type="number" min="1" max="10" value="${a.deteccion}" style="width:55px;" data-id="${a.id_modo}" data-field="deteccion"></td>
+      <td><span class="badge ${nivel}">${a.npr}</span></td>
+      <td class="txt" style="font-size:11px;">${escapeHtml(a.tecnica_deteccion)}</td>
+      <td class="txt" style="font-size:11px;">${escapeHtml([a.iso_modo,a.iso_mecanismo].filter(Boolean).join(' / ')||'—')}</td></tr>`;
+  });
+  wrap.innerHTML = html+'</table>';
+  wrap.querySelectorAll('input[data-id]').forEach(inp=>{
+    inp.disabled = !puede('editarAmef');
+    inp.onchange = async ()=>{
+      if(!puede('editarAmef')){ bloquearAccion('Solo el Ingeniero de Confiabilidad puede editar la matriz AMEF.'); renderAmefTable(); return; }
+      const body = { id_modo: parseInt(inp.dataset.id) };
+      body[inp.dataset.field] = parseInt(inp.value) || 1;
+      try{ await apiPut('/amef/override', body); showToast('AMEF actualizado.', 'success'); renderAmefTable(); actualizarHeroHud(); }catch(e){}
+    };
+  });
+}
+document.getElementById('recargarAmefBtn').onclick = renderAmefTable;
+document.getElementById('amef_motor').addEventListener('change', renderAmefTable);
+
+/* ================================================================
+   INVENTARIO
+   ================================================================ */
+document.getElementById('addInventarioBtn').onclick = async ()=>{
+  if(!puede('editarInventario')){ bloquearAccion('El rol Gerente no gestiona inventario directamente.'); return; }
+  const payload = {
+    nombre: txtOrNull('inv_nombre'), modo: document.getElementById('inv_modo').value,
+    stock: intOrNull('inv_stock') ?? 0, punto_reorden: intOrNull('inv_reorden') ?? 0,
+    lead_time_dias: intOrNull('inv_lead') ?? 0, costo_unitario: numOrNull('inv_costo')
+  };
+  if(!payload.nombre){ showToast('Indica el nombre del repuesto.', 'error'); return; }
+  if(!payload.modo){ showToast('Selecciona el modo de falla asociado.', 'error'); return; }
+  const btn = document.getElementById('addInventarioBtn');
+  btn.disabled = true;
+  try{
+    await apiPost('/inventario', payload);
+    showToast('Repuesto registrado.', 'success');
+    ['inv_nombre','inv_costo'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('inv_stock').value=0; document.getElementById('inv_reorden').value=0; document.getElementById('inv_lead').value=0;
+    await renderInventarioTable();
+  }catch(e){}
+  finally{ btn.disabled = false; }
+};
+async function renderInventarioTable(){
+  const wrap = document.getElementById('inventarioTableWrap');
+  try{ const items = await apiGet('/inventario'); pintarInventarioTable(items); }catch(e){ wrap.innerHTML = '<div class="empty">// no se pudo cargar el inventario</div>'; }
+}
+function pintarInventarioTable(items){
+  const wrap = document.getElementById('inventarioTableWrap');
+  if(!items.length){ wrap.innerHTML = '<div class="empty">// sin repuestos registrados</div>'; return; }
+  let html = '<table><tr><th>Nombre</th><th>Modo</th><th>Stock</th><th>Reorden</th><th>Lead time</th><th>Costo unit.</th><th></th></tr>';
+  items.forEach(it=>{
+    const bajo = it.stock <= it.punto_reorden;
+    html += `<tr><td class="txt">${escapeHtml(it.nombre)}</td><td class="txt">${escapeHtml(it.modo)}</td>
+      <td>${bajo ? `<span class="badge high">${it.stock}</span>` : it.stock}</td>
+      <td>${it.punto_reorden}</td><td>${it.lead_time_dias}d</td><td>${it.costo_unitario!=null ? '$'+it.costo_unitario : '—'}</td>
+      <td><button class="btn-danger" data-del="${it.id_repuesto}">Eliminar</button></td></tr>`;
+  });
+  wrap.innerHTML = html+'</table>';
+  wrap.querySelectorAll('[data-del]').forEach(b=>b.onclick=async ()=>{
+    if(!puede('editarInventario')){ bloquearAccion('El rol Gerente no gestiona inventario directamente.'); return; }
+    if(!confirm('¿Eliminar este repuesto del inventario?')) return;
+    try{ await apiDelete('/inventario/'+b.dataset.del); showToast('Repuesto eliminado.', 'success'); await renderInventarioTable(); }catch(e){}
+  });
+}
+document.getElementById('filtrarInventarioBtn').onclick = async ()=>{
+  const modo = document.getElementById('invf_modo').value;
+  try{ const items = await apiGet('/inventario' + (modo?('?modo='+modo):'')); pintarInventarioTable(items); }catch(e){}
+};
+
+/* ================================================================
+   WEIBULL + MONTECARLO
+   ================================================================ */
+document.getElementById('runMcBtn').onclick = async ()=>{
+  const modo = document.getElementById('mc_modo').value;
+  if(!modo){ showToast('Selecciona un modo de falla.', 'error'); return; }
+  const idMotor = document.getElementById('mc_motor').value || null;
+  const body = { modo, id_motor: idMotor, n_iteraciones: parseInt(document.getElementById('mc_iter').value)||10000,
+    mttr_sigma: parseFloat(document.getElementById('mc_sigma').value)||0.5 };
+  const btn = document.getElementById('runMcBtn');
+  btn.disabled = true;
+  try{
+    const r = await apiPost('/simulaciones/weibull-montecarlo', body);
+    lastSimulacion = { id_simulacion: r.id_simulacion, id_motor: idMotor, modo, beta: r.beta, eta: r.eta };
+
+    document.getElementById('mcResults').style.display = 'block';
+    document.getElementById('statBeta').textContent = r.beta.toFixed(3);
+    document.getElementById('statEta').textContent = Math.round(r.eta).toLocaleString();
+    document.getElementById('statBetaIc').textContent = (r.beta_ic_inferior!=null && r.beta_ic_superior!=null)
+      ? `${r.beta_ic_inferior.toFixed(2)} — ${r.beta_ic_superior.toFixed(2)}` : 'No disponible';
+    document.getElementById('statNUsados').textContent = `${r.n_fallas_usadas} fallas / ${r.n_censurados_usados} censurados`;
+    document.getElementById('statMtbf').textContent = Math.round(r.mtbf_simulado).toLocaleString();
+    document.getElementById('statMtbfIc').textContent = r.mtbf_ic_90 && r.mtbf_ic_90.length===2
+      ? `${Math.round(r.mtbf_ic_90[0]).toLocaleString()} — ${Math.round(r.mtbf_ic_90[1]).toLocaleString()}` : '—';
+    document.getElementById('statMttr').textContent = r.mttr_simulado.toFixed(1);
+    document.getElementById('statB10').textContent = Math.round(r.b10_life).toLocaleString();
+    document.getElementById('mcInterpretation').textContent = r.interpretacion;
+
+    const ft = pointsToSeries(r.curva_ft);
+    destroyChart('ft');
+    charts.ft = new Chart(document.getElementById('chartFt'), {
+      type:'line',
+      data:{labels: ft.labels.map(v=>Math.round(v)), datasets:[{data:ft.data, borderColor:'#ff5252', backgroundColor:'rgba(255,82,82,0.08)', fill:true, pointRadius:0, borderWidth:2}]},
+      options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+        scales:{x:{ticks:{color:'#7d938c'}, grid:{color:'#1f2e29'}}, y:{ticks:{color:'#7d938c'}, grid:{color:'#1f2e29'}}}}
+    });
+    const hist = pointsToSeries(r.histograma_ttf);
+    destroyChart('hist');
+    charts.hist = new Chart(document.getElementById('chartHist'), {
+      type:'bar',
+      data:{labels: hist.labels.map(v=>Math.round(v)), datasets:[{data:hist.data, backgroundColor:'#28e6c4'}]},
+      options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+        scales:{x:{ticks:{color:'#7d938c', maxTicksLimit:8}, grid:{display:false}}, y:{ticks:{color:'#7d938c'}, grid:{color:'#1f2e29'}}}}
+    });
+    document.getElementById('rcmBaseInfo').textContent = `// simulación lista: modo "${modo}", β=${r.beta.toFixed(2)}, η=${Math.round(r.eta).toLocaleString()}h — ya puedes calcular el plan RCM`;
+    showToast('Simulación ejecutada.', 'success');
+  }catch(e){}
+  finally{ btn.disabled = false; }
+};
+
+/* ================================================================
+   PLAN RCM + APROBACIÓN
+   ================================================================ */
+document.getElementById('calcRcmBtn').onclick = async ()=>{
+  if(!puede('generarPlan')){ bloquearAccion('Solo el Ingeniero de Confiabilidad puede generar un plan RCM.'); return; }
+  if(!lastSimulacion){ showToast('Ejecuta primero una simulación de Weibull/Montecarlo.', 'error'); return; }
+  const body = {
+    id_simulacion: lastSimulacion.id_simulacion, id_motor: lastSimulacion.id_motor,
+    costo_hora_preventivo: parseFloat(document.getElementById('c_prev').value)||800,
+    costo_falla_catastrofica: parseFloat(document.getElementById('c_fail').value)||15000,
+    costo_hora_parada_produccion: parseFloat(document.getElementById('c_prod').value)||500
+  };
+  const btn = document.getElementById('calcRcmBtn');
+  btn.disabled = true;
+  try{
+    const r = await apiPost('/rcm/plan', body);
+    lastPlan = r;
+    document.getElementById('rcmResults').style.display = 'block';
+    document.getElementById('rcmEstadoBadge').textContent = r.estado;
+    document.getElementById('rcmEstadoBadge').className = 'badge estado-' + r.estado.toLowerCase();
+    document.getElementById('statOptT').textContent = Math.round(r.intervalo_optimo_horas).toLocaleString();
+    document.getElementById('statOptCost').textContent = '$'+Math.round(r.costo_total_esperado).toLocaleString();
+    document.getElementById('statStrategy').textContent = r.estrategia;
+
+    const costo = pointsToSeries(r.curva_costo);
+    destroyChart('cost');
+    charts.cost = new Chart(document.getElementById('chartCost'), {
+      type:'line',
+      data:{labels: costo.labels.map(v=>Math.round(v)), datasets:[{data:costo.data, borderColor:'#ffb020', pointRadius:0, borderWidth:2}]},
+      options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+        scales:{x:{ticks:{color:'#7d938c', maxTicksLimit:8}, grid:{display:false}}, y:{ticks:{color:'#7d938c'}, grid:{color:'#1f2e29'}}}}
+    });
+    document.getElementById('routineList').innerHTML = renderRutinaGenerica(r.rutina);
+    showToast('Plan RCM generado como Borrador.', 'success');
+    renderPlanesTable();
+    actualizarHeroHud();
+  }catch(e){}
+  finally{ btn.disabled = false; }
+};
+
+async function accionPlan(accion){
+  if(accion==='aprobar' || accion==='rechazar'){
+    if(!puede('aprobarPlan')){ bloquearAccion('Solo el Gerente/Supervisor puede aprobar o rechazar planes.'); return; }
+  } else if(!puede('generarPlan')){
+    bloquearAccion('Solo el Ingeniero de Confiabilidad puede enviar un plan a aprobación.'); return;
+  }
+  if(!lastPlan){ showToast('Genera primero un plan.', 'error'); return; }
+  const comentario = txtOrNull('rcm_comentario');
+  if(accion==='rechazar' && !comentario){ showToast('Se requiere un comentario para rechazar.', 'error'); return; }
+  try{
+    const r = await apiPost(`/rcm/planes/${lastPlan.id_plan}/${accion}`, {comentario});
+    lastPlan = r;
+    document.getElementById('rcmEstadoBadge').textContent = r.estado;
+    document.getElementById('rcmEstadoBadge').className = 'badge estado-' + r.estado.toLowerCase();
+    showToast('Plan actualizado a: ' + r.estado, 'success');
+    renderPlanesTable();
+    actualizarHeroHud();
+  }catch(e){}
+}
+document.getElementById('enviarAprobacionBtn').onclick = ()=>accionPlan('enviar');
+document.getElementById('aprobarPlanBtn').onclick = ()=>accionPlan('aprobar');
+document.getElementById('rechazarPlanBtn').onclick = ()=>accionPlan('rechazar');
+
+async function renderPlanesTable(){
+  const wrap = document.getElementById('planesTableWrap');
+  const estado = document.getElementById('planf_estado').value;
+  let planes;
+  try{ planes = await apiGet('/rcm/planes' + (estado?('?estado='+estado):'')); }catch(e){ wrap.innerHTML = '<div class="empty">// no se pudieron cargar los planes</div>'; return; }
+  if(!planes.length){ wrap.innerHTML = '<div class="empty">// sin planes generados</div>'; return; }
+  let html = '<table><tr><th>ID</th><th>NPR</th><th>Intervalo (h)</th><th>Costo esperado</th><th>Estrategia</th><th>Estado</th><th>Generado</th></tr>';
+  planes.forEach(p=>{
+    html += `<tr><td title="${p.id_plan}">${shortId(p.id_plan)}</td><td>${p.npr_calculado}</td>
+      <td>${Math.round(p.intervalo_optimo_horas).toLocaleString()}</td><td>$${Math.round(p.costo_total_esperado).toLocaleString()}</td>
+      <td class="txt">${escapeHtml(p.estrategia)}</td>
+      <td><span class="badge estado-${p.estado.toLowerCase()}">${p.estado}</span></td>
+      <td class="txt" style="font-size:11px;">${new Date(p.generado_en).toLocaleString()}</td></tr>`;
+  });
+  wrap.innerHTML = html+'</table>';
+}
+document.getElementById('filtrarPlanesBtn').onclick = renderPlanesTable;
+
+/* ================================================================
+   INICIO
+   ================================================================ */
+(function init(){
+  document.getElementById('apiBaseInput').value = getApiBase();
+  probarConexion();
+  limpiarMotorForm();
+})();
+</script>
+</body>
+</html>
